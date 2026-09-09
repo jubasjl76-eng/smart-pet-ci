@@ -1,0 +1,9 @@
+# Shared Python style (HIL harness, scripts). Ruff = lint + format in one.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[format]
+quote-style = "single"
