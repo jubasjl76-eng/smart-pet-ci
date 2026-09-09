@@ -63,6 +63,25 @@ need.
 Enable the Renovate GitHub App on the account once; it picks up every repo's
 `renovate.json`.
 
+## Branch protection (`scripts/apply-branch-protection.sh`)
+
+One idempotent script that applies the baseline ruleset to every repo's
+integration branch (`development` for services, `main` for libs/infra/firmware):
+PR required, `required_approving_review_count: 0` (a solo account can't
+self-approve — CI is the gate), dismiss stale approvals, required status checks
+must pass + branch up to date, conversation resolution required, no force-push,
+no deletion, `enforce_admins: false` (emergency fixes can still land).
+
+```bash
+./scripts/apply-branch-protection.sh --dry-run          # print the payloads
+./scripts/apply-branch-protection.sh                    # apply to all
+./scripts/apply-branch-protection.sh smart-pet-backend  # one repo
+```
+
+Needs `gh` (with repo-admin rights) + `jq`. Node repos require the `ci / ci`
+check; the pio/terraform repos are left with no hard-required check until you
+read the real context name from a PR and fill it into `DEFAULT_TARGETS`.
+
 ## Planned wiring
 
 | Repo | Caller | Notes |
