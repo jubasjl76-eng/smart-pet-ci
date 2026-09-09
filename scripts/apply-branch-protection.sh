@@ -42,6 +42,7 @@ DEFAULT_TARGETS=(
   "smart-pet-website:development:"
   "smart-pet-mqtt:main:ci / ci"
   "smart-pet-shared:main:ci / ci"
+  "smart-pet-api-client:main:ci / ci"
   "smart-pet-simulator:main:ci / ci"
   "smart-pet-dev:main:"
   "smart-pet-ci:main:"
