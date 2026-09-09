@@ -14,6 +14,13 @@ on:
         description: 'Directory holding platformio.ini (repo root by default).'
         type: string
         default: "."
+      example-dir:
+        description: >-
+          If set (e.g. "examples"), each matrix job builds <example-dir>/<env>
+          via PLATFORMIO_SRC_DIR — for a repo with one platformio.ini and many
+          example sketches. Leave empty for repos whose sketch is src_dir.
+        type: string
+        default: ""
       native-test-command:
         description: 'Host test command, or "" to skip the native job.'
         type: string
@@ -47,4 +54,12 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', inputs.project-dir), format('{0}/library.json', inputs.project-dir)) }}
           restore-keys: pio-${{ runner.os }}-
       - run: pip install --upgrade platformio
-      - run: pio run -d "${{ inputs.project-dir }}" -e ${{ matrix.env }}
+      - name: pio run
+        env:
+          EXAMPLE_DIR: ${{ inputs.example-dir }}
+        run: |
+          if [ -n "$EXAMPLE_DIR" ]; then
+            export PLATFORMIO_SRC_DIR="$EXAMPLE_DIR/${{ matrix.env }}"
+            echo "PLATFORMIO_SRC_DIR=$PLATFORMIO_SRC_DIR"
+          fi
+          pio run -d "${{ inputs.project-dir }}" -e ${{ matrix.env }}
