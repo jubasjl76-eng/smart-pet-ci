@@ -1,0 +1,62 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared Renovate preset for the Smart Pet repos. Extend it from a repo's renovate.json: { \"extends\": [\"github>jubasjl76-eng/smart-pet-ci//renovate/default.json\"] }",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "group:monorepos"
+  ],
+  "timezone": "Europe/Lisbon",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "security"],
+    "automerge": true
+  },
+  "packageRules": [
+    {
+      "description": "Internal @jubasjl76-eng/* npm packages: group, automerge once CI is green",
+      "matchPackageNames": ["/^@jubasjl76-eng//"],
+      "groupName": "smart-pet internal",
+      "automerge": true,
+      "automergeType": "pr",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "Internal git-tag deps (github:jubasjl76-eng/<repo>#<tag>): same treatment",
+      "matchDatasources": ["github-tags", "github-releases"],
+      "matchPackageNames": ["jubasjl76-eng/**"],
+      "groupName": "smart-pet internal",
+      "automerge": true,
+      "automergeType": "pr",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "External runtime + dev deps: pin exact, group per manager, human review",
+      "matchDepTypes": ["dependencies", "devDependencies"],
+      "matchPackageNames": ["!/^@jubasjl76-eng//"],
+      "rangeStrategy": "pin",
+      "groupName": "external {{manager}} deps",
+      "automerge": false
+    },
+    {
+      "description": "GitHub Actions: pin to SHA, automerge digest/patch/minor",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "matchUpdateTypes": ["digest", "patch", "minor"],
+      "automerge": true
+    },
+    {
+      "description": "PlatformIO platform/lib pins are commit-pinned on purpose; PRs only, no automerge",
+      "matchFileNames": ["**/platformio.ini"],
+      "automerge": false
+    }
+  ]
+}
