@@ -1,0 +1,55 @@
+name: node-ci
+
+# Reusable CI for the npm/TypeScript repos (backend, mqtt, simulator, gateway,
+# dashboard). Called from a repo's own .github/workflows/ci.yml — see
+# callers/node.yml.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "22"
+      working-directory:
+        description: Path to the package (repo root by default).
+        type: string
+        default: "."
+      typecheck:
+        description: 'Run `tsc --noEmit` before the tests.'
+        type: boolean
+        default: true
+      test-command:
+        type: string
+        default: "npm test"
+      run-build:
+        description: 'Run `npm run build` after the tests.'
+        type: boolean
+        default: false
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - run: npm ci
+
+      - name: typecheck
+        if: ${{ inputs.typecheck }}
+        run: npx tsc --noEmit
+
+      - name: test
+        run: ${{ inputs.test-command }}
+
+      - name: build
+        if: ${{ inputs.run-build }}
+        run: npm run build

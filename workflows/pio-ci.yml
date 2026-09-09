@@ -1,0 +1,46 @@
+name: pio-ci
+
+# Reusable CI for smart-pet-device-sdk and the ported firmware repos.
+# Runs the freestanding host tests, then a `pio run` matrix for each env.
+
+on:
+  workflow_call:
+    inputs:
+      environments:
+        description: 'JSON array of PlatformIO envs to build, e.g. ["feeder","door","scale"].'
+        type: string
+        default: '["feeder","door","scale"]'
+      native-test-command:
+        description: 'Host test command, or "" to skip the native job.'
+        type: string
+        default: "./test/run_native.sh"
+
+jobs:
+  native:
+    if: ${{ inputs.native-test-command != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ${{ inputs.native-test-command }}
+
+  device:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(inputs.environments) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'library.json') }}
+          restore-keys: pio-${{ runner.os }}-
+      - run: pip install --upgrade platformio
+      - run: pio run -e ${{ matrix.env }}

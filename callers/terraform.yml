@@ -1,0 +1,17 @@
+# Copy to smart-pet-terraform/.github/workflows/ci.yml
+name: CI
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+jobs:
+  ci:
+    uses: jubasjl76-eng/smart-pet-ci/.github/workflows/terraform-ci.yml@main
+    # with:
+    #   working-directory: "."
+    #   terraform-version: "1.9.8"
+    #   run-plan: false
+    # secrets:
+    #   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #   AWS_REGION: ${{ secrets.AWS_REGION }}
