@@ -1,0 +1,33 @@
+# Shared git hooks. Keep pre-commit under ~5s or it gets bypassed; heavy checks
+# stay in CI. Copy to a repo root (sync-dev-config.sh), then `lefthook install`.
+#
+# JS/TS repos need: lefthook, prettier, eslint (devDeps).
+# Firmware repos need: lefthook, clang-format (brew), and skip the JS steps.
+
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: '*.{js,ts,mjs,cjs,jsx,tsx,json,css,md,yml,yaml}'
+      run: npx prettier --write {staged_files} && git add {staged_files}
+    lint:
+      glob: '*.{js,ts,mjs,cjs,jsx,tsx}'
+      run: npx eslint --fix --no-warn-ignored {staged_files} && git add {staged_files}
+    clang-format:
+      glob: '*.{c,cc,cpp,h,hpp,ino}'
+      run: clang-format -i {staged_files} && git add {staged_files}
+    gitleaks:
+      run: gitleaks protect --staged --no-banner --redact
+    typecheck:
+      glob: '*.{ts,tsx}'
+      run: npx tsc --noEmit
+
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no-install commitlint --edit {1}
+
+pre-push:
+  commands:
+    test:
+      run: npm test --silent --if-present

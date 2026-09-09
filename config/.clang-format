@@ -1,0 +1,8 @@
+# Shared C/C++ style for the SDK + firmware repos.
+BasedOnStyle: Google
+IndentWidth: 2
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: false
+AllowShortFunctionsOnASingleLine: Inline

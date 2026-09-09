@@ -1,0 +1,17 @@
+{
+  "name": "smart-pet (base)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.11" },
+    "ghcr.io/devcontainers/features/terraform:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "onCreateCommand": "npm i -g pnpm lefthook && pipx install platformio || true; sudo apt-get update && sudo apt-get install -y age mosquitto-clients clang-format",
+  "postCreateCommand": "([ -f package-lock.json ] && npm ci || true); ([ -f lefthook.yml ] && lefthook install || true)",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "editorconfig.editorconfig", "hashicorp.terraform", "platformio.platformio-ide"]
+    }
+  }
+}

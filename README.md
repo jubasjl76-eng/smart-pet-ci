@@ -101,6 +101,31 @@ Four tiers: **Local** (compose) → **Dev** (`envs/dev`, auto on merge to
   `SOPS_AGE_KEY` is the only static CI secret. Runtime secrets stay in AWS
   Secrets Manager. See `sops/README.md`.
 
+## Shared dev-config (`config/`, hardening Phase 13, A9)
+
+One place for formatting/lint/hook config so every repo is consistent.
+
+| File | Applies to |
+|---|---|
+| `.editorconfig` | all repos |
+| `.markdownlint.jsonc` | all repos |
+| `eslint.config.mjs` | TS repos (flat config; a repo's `eslint.config.mjs` re-exports it) |
+| `prettier.config.mjs` | TS repos |
+| `commitlint.config.mjs` | TS repos (conventional commits) |
+| `lefthook.yml` | TS + firmware repos — pre-commit: prettier + eslint + clang-format + gitleaks + fast `tsc`; commit-msg: commitlint; pre-push: `npm test` |
+| `.clang-format` | SDK + firmware repos (Google base, 2-space, 100 col) |
+| `ruff.toml` | Python (HIL harness, scripts) |
+| `.devcontainer/devcontainer.json` | base image — Node 22, Python 3.11, terraform, gh, pnpm, lefthook, PlatformIO, `age`, `mosquitto-clients`, `clang-format` |
+
+```bash
+./scripts/sync-dev-config.sh ../smart-pet-backend          # auto-detects the repo type
+./scripts/sync-dev-config.sh ../smart-feeder --firmware
+```
+
+The script copies the right subset. TS repos then add the devDeps it prints and
+run `npx lefthook install`. Keep pre-commit under ~5s or it gets bypassed; heavy
+checks stay in CI.
+
 ## Planned wiring
 
 | Repo | Caller | Notes |
