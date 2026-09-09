@@ -82,6 +82,25 @@ Needs `gh` (with repo-admin rights) + `jq`. Node repos require the `ci / ci`
 check; the pio/terraform repos are left with no hard-required check until you
 read the real context name from a PR and fill it into `DEFAULT_TARGETS`.
 
+## Environment strategy (hardening Phase 12, A8)
+
+Four tiers: **Local** (compose) → **Dev** (`envs/dev`, auto on merge to
+`development`) → **Staging** (`envs/staging`, on a `v*-rc.N` tag) → **Prod**
+(`envs/prod`, on a `v*` tag, gated by required reviewers).
+
+- **GitHub Environments** `dev` / `staging` / `prod` exist on each deploying repo
+  (`smart-pet-backend`, `pet-iot-sensors-service`). `prod` has a required
+  reviewer. `vars.DEPLOY_ROLE_ARN` / `vars.AWS_REGION` are set **per
+  environment** (each tier's own OIDC deploy role from
+  `smart-pet-terraform module.oidc`).
+- `deploy-ecs.yml` takes an **`environment`** input; a caller's `deploy.yml`
+  resolves dev/staging/prod from the git ref and passes it, so the job binds to
+  that Environment's protection rules + scoped vars, and targets
+  `smart-pet-<env>` / `smart-pet-<env>-<service>`.
+- **SOPS + age** (`sops/`) for git-committed non-prod config (`*.enc.yaml`).
+  `SOPS_AGE_KEY` is the only static CI secret. Runtime secrets stay in AWS
+  Secrets Manager. See `sops/README.md`.
+
 ## Planned wiring
 
 | Repo | Caller | Notes |

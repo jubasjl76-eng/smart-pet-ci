@@ -1,0 +1,14 @@
+# Template — copy to a repo root as `.sops.yaml`, then replace the age recipient
+# with that repo's (or the shared) public key. SOPS picks the matching rule by
+# the file path being encrypted.
+#
+# Generate a key:   age-keygen -o age.key         # keep age.key OUT of git
+# Public key:       age-keygen -y age.key
+#
+# Encrypt in place: sops -e -i config/dev.enc.yaml
+# Edit:             sops config/dev.enc.yaml
+# One-off env:      sops exec-env config/dev.enc.yaml 'npm run migrate'
+
+creation_rules:
+  - path_regex: (^|/)(config|secrets|envs)/.*\.enc\.(ya?ml|json|env)$
+    age: age1REPLACE_WITH_PUBLIC_KEY
