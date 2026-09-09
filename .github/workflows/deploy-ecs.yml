@@ -1,0 +1,136 @@
+name: deploy-ecs
+
+# Reusable: build a service image, push to ECR, register a new task-def revision
+# from the running one with the new image, optionally run a one-off migration
+# task, roll the ECS service, and wait for it to stabilise. GitHub → AWS OIDC,
+# no static keys.
+#
+# The caller passes role-to-assume (module.oidc gha_deploy_role_arns[<service>])
+# and the names Terraform created.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: 'ECS service name, e.g. "backend".'
+        type: string
+        required: true
+      task-family:
+        description: 'Task-def family, e.g. "smart-pet-dev-backend".'
+        type: string
+        required: true
+      container-name:
+        description: 'Container in the task def to swap the image on.'
+        type: string
+        required: true
+      cluster:
+        description: 'ECS cluster name, e.g. "smart-pet-dev".'
+        type: string
+        required: true
+      ecr-repo:
+        description: 'ECR repo name, e.g. "smart-pet/backend".'
+        type: string
+        required: true
+      aws-region:
+        type: string
+        required: true
+      role-to-assume:
+        type: string
+        required: true
+      dockerfile:
+        type: string
+        default: "Dockerfile"
+      build-context:
+        type: string
+        default: "."
+      run-migrations:
+        type: boolean
+        default: false
+      migration-command:
+        description: 'JSON array, e.g. ''["node","dist/database/migrate.js"]''.'
+        type: string
+        default: '["node","dist/database/migrate.js"]'
+      wait-for-stable:
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: build + push
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPO: ${{ inputs.ecr-repo }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_SHA::12}"
+          IMAGE="$REGISTRY/$REPO:$TAG"
+          docker build -f "${{ inputs.dockerfile }}" -t "$IMAGE" -t "$REGISTRY/$REPO:latest" "${{ inputs.build-context }}"
+          docker push "$IMAGE"
+          docker push "$REGISTRY/$REPO:latest"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: register new task definition
+        id: taskdef
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition --task-definition "${{ inputs.task-family }}" \
+            --query 'taskDefinition' --output json > current.json
+          jq --arg img "$IMAGE" --arg name "${{ inputs.container-name }}" '
+            .containerDefinitions = (.containerDefinitions | map(if .name == $name then .image = $img else . end))
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+          ' current.json > new.json
+          NEW_ARN=$(aws ecs register-task-definition --cli-input-json file://new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: run migrations
+        if: ${{ inputs.run-migrations }}
+        env:
+          NEW_ARN: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          set -euo pipefail
+          NETCFG=$(aws ecs describe-services --cluster "${{ inputs.cluster }}" --services "${{ inputs.service }}" \
+            --query 'services[0].networkConfiguration' --output json)
+          TASK_ARN=$(aws ecs run-task --cluster "${{ inputs.cluster }}" --task-definition "$NEW_ARN" \
+            --launch-type FARGATE --network-configuration "$NETCFG" --started-by "gha-migrate" \
+            --overrides "{\"containerOverrides\":[{\"name\":\"${{ inputs.container-name }}\",\"command\":${{ inputs.migration-command }}}]}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "migration task: $TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "${{ inputs.cluster }}" --tasks "$TASK_ARN"
+          CODE=$(aws ecs describe-tasks --cluster "${{ inputs.cluster }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "migration exit code: $CODE"
+          [ "$CODE" = "0" ]
+
+      - name: roll the service
+        env:
+          NEW_ARN: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "${{ inputs.cluster }}" --service "${{ inputs.service }}" \
+            --task-definition "$NEW_ARN" >/dev/null
+          echo "rolled ${{ inputs.service }} → $NEW_ARN"
+
+      - name: wait for stable
+        if: ${{ inputs.wait-for-stable }}
+        run: |
+          aws ecs wait services-stable --cluster "${{ inputs.cluster }}" --services "${{ inputs.service }}"
