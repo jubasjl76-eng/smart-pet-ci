@@ -27,11 +27,12 @@ DRY_RUN=false
 # repo:branch:comma-separated required check contexts
 #
 # The node repos all run smart-pet-ci/node-ci.yml → the check context is "ci / ci"
-# (verified). For the pio / terraform repos the context name depends on the
-# reusable-workflow job id and (for terraform) the matrix; left blank here so the
-# ruleset still forces "PR required + branch up to date" without hard-requiring a
-# check that might not exist yet. After a repo's next PR, read the exact context
-# from `gh pr checks <n> --repo jubasjl76-eng/<repo>` and fill it in, then re-run.
+# (verified). terraform requires "fmt" (the non-matrix job). The pio repos
+# (sdk, firmware) run a per-environment build matrix whose context names
+# ("ci / device (feeder)", "build / device (esp32dev)", …) shift with the
+# matrix, so no check is hard-required there — the ruleset still forces
+# "PR required + branch up to date". To require one, read the exact context from
+# `gh pr checks <n> --repo jubasjl76-eng/<repo>` and add it here, then re-run.
 DEFAULT_TARGETS=(
   "smart-pet-backend:development:ci / ci"
   "pet-iot-edge-gateway:development:ci / ci"
@@ -43,7 +44,7 @@ DEFAULT_TARGETS=(
   "smart-pet-simulator:main:ci / ci"
   "smart-pet-ci:main:"
   "smart-pet-device-sdk:main:"
-  "smart-pet-terraform:main:"
+  "smart-pet-terraform:main:fmt"
   "smart-feeder:main:"
   "smart-water-dispenser:main:"
   "gps-dog-collar:main:"
