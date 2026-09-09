@@ -40,6 +40,29 @@ git add .github/workflows/ci.yml && git commit -m "ci: use smart-pet-ci/node-ci"
 Or copy the matching file from `callers/` by hand and uncomment the `with:` you
 need.
 
+## Renovate (shared dependency automation — hardening Phase 11)
+
+`renovate/default.json` is the shared preset. Each repo drops a `renovate.json`:
+
+```json
+{ "extends": ["github>jubasjl76-eng/smart-pet-ci//renovate/default.json"] }
+```
+
+(`callers/renovate.json` is that file, ready to copy.) The preset:
+
+- **Internal deps** (`@jubasjl76-eng/*` packages and `github:jubasjl76-eng/<repo>#<tag>`
+  git-tag deps): grouped as "smart-pet internal", **automerged once CI is green**,
+  no release-age delay.
+- **External deps**: pinned exact, grouped per package manager, **human review**.
+- **GitHub Actions**: pinned to SHA, digest/patch/minor automerged.
+- **`platformio.ini`** platform/lib pins: PRs only (they are commit-pinned on
+  purpose).
+- Weekly schedule, lock-file maintenance, a dependency dashboard issue,
+  vulnerability fixes automerged.
+
+Enable the Renovate GitHub App on the account once; it picks up every repo's
+`renovate.json`.
+
 ## Planned wiring
 
 | Repo | Caller | Notes |
