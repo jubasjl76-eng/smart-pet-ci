@@ -11,6 +11,7 @@ keeps a ~10-line `.github/workflows/ci.yml` that calls one of these; the logic
 | `.github/workflows/node-ci.yml` | backend, mqtt, simulator, gateway, dashboard | `node-version` (22), `working-directory` (.), `typecheck` (true → `tsc --noEmit`), `test-command` (`npm test`), `run-build` (false) |
 | `.github/workflows/pio-ci.yml` | `smart-pet-device-sdk`, ported firmware repos | `environments` (`'["feeder","door","scale"]'`), `native-test-command` (`./test/run_native.sh`, `""` to skip) |
 | `.github/workflows/terraform-ci.yml` | `smart-pet-terraform` (Phase 10) | `working-directory`, `terraform-version` (1.9.8), `run-plan` (false); AWS creds as `secrets:` when `run-plan` |
+| `.github/workflows/deploy-ecs.yml` | app repos deploying to ECS (Phase 10) | `service`, `task-family`, `container-name`, `cluster`, `ecr-repo`, `aws-region`, `role-to-assume` (OIDC), `run-migrations`, `migration-command` |
 
 ## One-time setup for this repo
 
