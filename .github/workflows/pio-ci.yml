@@ -10,6 +10,10 @@ on:
         description: 'JSON array of PlatformIO envs to build, e.g. ["feeder","door","scale"].'
         type: string
         default: '["feeder","door","scale"]'
+      project-dir:
+        description: 'Directory holding platformio.ini (repo root by default).'
+        type: string
+        default: "."
       native-test-command:
         description: 'Host test command, or "" to skip the native job.'
         type: string
@@ -40,7 +44,7 @@ jobs:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'library.json') }}
+          key: pio-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', inputs.project-dir), format('{0}/library.json', inputs.project-dir)) }}
           restore-keys: pio-${{ runner.os }}-
       - run: pip install --upgrade platformio
-      - run: pio run -e ${{ matrix.env }}
+      - run: pio run -d "${{ inputs.project-dir }}" -e ${{ matrix.env }}
