@@ -41,6 +41,7 @@ DEFAULT_TARGETS=(
   "backoffice-dashboard:development:ci / ci"
   "smart-pet-website:development:"
   "smart-pet-mqtt:main:ci / ci"
+  "smart-pet-shared:main:ci / ci"
   "smart-pet-simulator:main:ci / ci"
   "smart-pet-ci:main:"
   "smart-pet-device-sdk:main:"
