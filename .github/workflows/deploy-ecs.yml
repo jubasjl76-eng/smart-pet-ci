@@ -53,6 +53,10 @@ on:
       wait-for-stable:
         type: boolean
         default: true
+      environment:
+        description: 'GitHub Environment to bind the deploy job to (dev | staging | prod). Gates on its protection rules; `vars`/`secrets` resolve to that environment.'
+        type: string
+        default: ""
 
 permissions:
   id-token: write
@@ -61,6 +65,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v5
 
