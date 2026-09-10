@@ -44,7 +44,7 @@ permissions:
   security-events: write
 
 env:
-  SEMGREP_IMAGE: semgrep/semgrep:1.97.0
+  SEMGREP_IMAGE: semgrep/semgrep:1.176.0
   TRIVY_IMAGE: aquasec/trivy:0.74.0
 
 jobs:
@@ -77,19 +77,15 @@ jobs:
           sarif_file: semgrep.sarif
           category: semgrep
       # Repo-local rules are curated and expected to pass — they always gate.
+      # No --sarif here: `--error` only sets the exit code when a report file is
+      # not also being written, and a hard gate needs no Security-tab entry.
       - name: semgrep (repo-local rules — blocking)
         if: ${{ inputs.semgrep-config != '' }}
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
             semgrep scan --config "${{ inputs.semgrep-config }}" \
               --error --metrics=off \
-              --sarif --output semgrep-local.sarif \
               "${{ inputs.working-directory }}"
-      - uses: github/codeql-action/upload-sarif@v3
-        if: ${{ inputs.semgrep-config != '' && !cancelled() }}
-        with:
-          sarif_file: semgrep-local.sarif
-          category: semgrep-local
 
   deps:
     runs-on: ubuntu-latest
