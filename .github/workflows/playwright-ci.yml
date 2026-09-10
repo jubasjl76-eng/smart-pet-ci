@@ -1,0 +1,51 @@
+name: playwright-ci
+
+# Reusable Playwright E2E for the web repos (dashboard, website).
+# The caller's `test:e2e` script + playwright.config own the details (webServer,
+# API mocking); this just provides the runner + browser install + report upload.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "20"
+      working-directory:
+        type: string
+        default: "."
+      browsers:
+        description: 'Browsers for `playwright install --with-deps`.'
+        type: string
+        default: "chromium"
+      test-command:
+        type: string
+        default: "npm run test:e2e"
+      timeout-minutes:
+        type: number
+        default: 20
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ inputs.browsers }}
+      - name: Run E2E
+        run: ${{ inputs.test-command }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: ${{ inputs.working-directory }}/playwright-report/
+          retention-days: 7
