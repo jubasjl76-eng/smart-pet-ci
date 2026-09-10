@@ -31,6 +31,15 @@ on:
           and `gcovr` and uploads coverage.xml. "" to skip.
         type: string
         default: ""
+      wokwi-env:
+        description: >-
+          PlatformIO env to build and run under Wokwi CI (e.g. "feeder").
+          "" to skip. Dormant unless the caller also has WOKWI_CLI_TOKEN set.
+        type: string
+        default: ""
+    secrets:
+      WOKWI_CLI_TOKEN:
+        required: false
 
 jobs:
   native:
@@ -95,3 +104,42 @@ jobs:
             echo "PLATFORMIO_SRC_DIR=$PLATFORMIO_SRC_DIR"
           fi
           pio run -d "${{ inputs.project-dir }}" -e ${{ matrix.env }}
+
+  # Boots the built image on a simulated ESP32. No-op until the caller sets the
+  # (free, OSS) WOKWI_CLI_TOKEN secret — see smart-pet-docs OPERATOR-ACTIONS G4.
+  wokwi:
+    if: ${{ inputs.wokwi-env != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: token gate
+        id: gate
+        env:
+          TOK: ${{ secrets.WOKWI_CLI_TOKEN }}
+        run: |
+          if [ -n "$TOK" ]; then echo "on=1" >> "$GITHUB_OUTPUT"; else
+            echo "WOKWI_CLI_TOKEN not set — skipping the Wokwi run."; fi
+      - if: steps.gate.outputs.on
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - if: steps.gate.outputs.on
+        run: pip install --upgrade platformio
+      - if: steps.gate.outputs.on
+        name: build ${{ inputs.wokwi-env }}
+        env:
+          EXAMPLE_DIR: ${{ inputs.example-dir }}
+        run: |
+          if [ -n "$EXAMPLE_DIR" ]; then
+            export PLATFORMIO_SRC_DIR="$EXAMPLE_DIR/${{ inputs.wokwi-env }}"
+          fi
+          pio run -d "${{ inputs.project-dir }}" -e ${{ inputs.wokwi-env }}
+      - if: steps.gate.outputs.on
+        name: wokwi test
+        uses: wokwi/wokwi-ci-action@v1
+        with:
+          token: ${{ secrets.WOKWI_CLI_TOKEN }}
+          path: ${{ inputs.project-dir }}/.wokwi
+          diagram_file: diagram.json
+          scenario: scenario.yaml
+          timeout: 20000
