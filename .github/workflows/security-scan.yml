@@ -34,6 +34,10 @@ on:
         description: 'Fail the build on Semgrep / Trivy findings (default: report only).'
         type: boolean
         default: false
+      semgrep-config:
+        description: 'Extra Semgrep --config value(s) — a repo-local rules dir/file, appended to the registry packs.'
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -59,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: semgrep
+      - name: semgrep (registry packs — report only)
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
             semgrep scan \
@@ -72,6 +76,20 @@ jobs:
         with:
           sarif_file: semgrep.sarif
           category: semgrep
+      # Repo-local rules are curated and expected to pass — they always gate.
+      - name: semgrep (repo-local rules — blocking)
+        if: ${{ inputs.semgrep-config != '' }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
+            semgrep scan --config "${{ inputs.semgrep-config }}" \
+              --error --metrics=off \
+              --sarif --output semgrep-local.sarif \
+              "${{ inputs.working-directory }}"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: ${{ inputs.semgrep-config != '' && !cancelled() }}
+        with:
+          sarif_file: semgrep-local.sarif
+          category: semgrep-local
 
   deps:
     runs-on: ubuntu-latest
