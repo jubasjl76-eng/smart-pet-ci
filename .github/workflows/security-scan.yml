@@ -1,0 +1,116 @@
+name: security-scan
+
+# Reusable per-PR + weekly security battery (Phase 18, Part C · C2).
+# All repos are public, so SARIF -> the repo Security tab is free. Hard gates:
+# secrets (any hit) and `npm audit` (>= audit-level). Semgrep + Trivy upload to
+# the Security tab but don't fail the build yet — flip `strict: true` once each
+# repo's baseline is triaged.
+#
+# Caller: <repo>/.github/workflows/security.yml
+#   uses: jubasjl76-eng/smart-pet-ci/.github/workflows/security-scan.yml@main
+#   with: { node: true, iac: false }
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: "."
+      node:
+        description: 'Run `npm audit` (repo has a package-lock.json).'
+        type: boolean
+        default: false
+      audit-level:
+        type: string
+        default: "high"
+      iac:
+        description: 'Also run `trivy config` (Terraform / Dockerfiles / k8s).'
+        type: boolean
+        default: false
+      strict:
+        description: 'Fail the build on Semgrep / Trivy findings (default: report only).'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install semgrep==1.97.0
+      - name: semgrep
+        run: |
+          semgrep scan \
+            --config p/default --config p/secrets --config p/owasp-top-ten \
+            --sarif --output semgrep.sarif --metrics=off \
+            ${{ inputs.strict && '--error' || '' }} \
+            "${{ inputs.working-directory }}"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: ${{ !cancelled() }}
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: trivy fs (vulns + secrets)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ inputs.working-directory }}
+          scanners: vuln,secret
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: ${{ inputs.strict && '1' || '0' }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: ${{ !cancelled() }}
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+      - name: npm audit
+        if: ${{ inputs.node }}
+        working-directory: ${{ inputs.working-directory }}
+        # Runtime deps only — dev-only advisories are tracked, not release-blocking.
+        run: npm audit --omit=dev --audit-level=${{ inputs.audit-level }}
+
+  iac:
+    if: ${{ inputs.iac }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: trivy config
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: ${{ inputs.working-directory }}
+          format: sarif
+          output: trivy-config.sarif
+          exit-code: ${{ inputs.strict && '1' || '0' }}
+          severity: HIGH,CRITICAL
+      - uses: github/codeql-action/upload-sarif@v3
+        if: ${{ !cancelled() }}
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
