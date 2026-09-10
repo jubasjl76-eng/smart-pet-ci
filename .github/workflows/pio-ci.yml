@@ -22,9 +22,15 @@ on:
         type: string
         default: ""
       native-test-command:
-        description: 'Host test command, or "" to skip the native job.'
+        description: 'Host test command, or "" to skip the native job. PlatformIO + gcovr are on PATH.'
         type: string
         default: "./test/run_native.sh"
+      coverage-env:
+        description: >-
+          A PlatformIO test env built with --coverage; the native job runs it
+          and `gcovr` and uploads coverage.xml. "" to skip.
+        type: string
+        default: ""
 
 jobs:
   native:
@@ -32,7 +38,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: ${{ inputs.native-test-command }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-native-${{ runner.os }}-${{ hashFiles(format('{0}/platformio.ini', inputs.project-dir)) }}
+          restore-keys: pio-native-${{ runner.os }}-
+      - run: pip install --upgrade platformio gcovr
+      - name: native tests
+        working-directory: ${{ inputs.project-dir }}
+        run: ${{ inputs.native-test-command }}
+      - name: coverage
+        if: ${{ inputs.coverage-env != '' }}
+        working-directory: ${{ inputs.project-dir }}
+        run: |
+          pio test -e ${{ inputs.coverage-env }}
+          gcovr --root . --filter 'src/' --xml-pretty -o coverage.xml --print-summary
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.coverage-env != '' }}
+        with:
+          name: native-coverage
+          path: ${{ inputs.project-dir }}/coverage.xml
+          retention-days: 7
 
   device:
     runs-on: ubuntu-latest
