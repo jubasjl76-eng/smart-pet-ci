@@ -46,12 +46,12 @@ jobs:
     if: ${{ inputs.native-test-command != '' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Cache PlatformIO
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.platformio
@@ -68,7 +68,7 @@ jobs:
         run: |
           pio test -e ${{ inputs.coverage-env }}
           gcovr --root . --filter 'src/' --xml-pretty -o coverage.xml --print-summary
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ inputs.coverage-env != '' }}
         with:
           name: native-coverage
@@ -82,12 +82,12 @@ jobs:
       matrix:
         env: ${{ fromJSON(inputs.environments) }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Cache PlatformIO
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.platformio
@@ -111,7 +111,7 @@ jobs:
     if: ${{ inputs.wokwi-env != '' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: token gate
         id: gate
         env:
@@ -120,7 +120,7 @@ jobs:
           if [ -n "$TOK" ]; then echo "on=1" >> "$GITHUB_OUTPUT"; else
             echo "WOKWI_CLI_TOKEN not set — skipping the Wokwi run."; fi
       - if: steps.gate.outputs.on
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - if: steps.gate.outputs.on
@@ -136,7 +136,7 @@ jobs:
           pio run -d "${{ inputs.project-dir }}" -e ${{ inputs.wokwi-env }}
       - if: steps.gate.outputs.on
         name: wokwi test
-        uses: wokwi/wokwi-ci-action@v1
+        uses: wokwi/wokwi-ci-action@11ddc3fe66a14fcd46683fb21ae5c77657ad4606 # v1
         with:
           token: ${{ secrets.WOKWI_CLI_TOKEN }}
           path: ${{ inputs.project-dir }}/.wokwi
