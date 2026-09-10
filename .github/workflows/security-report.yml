@@ -47,6 +47,8 @@ jobs:
       - if: steps.gate.outputs.on
         env:
           GH_TOKEN: ${{ secrets.SECURITY_REPORT_TOKEN }}
-        run: >-
-          node scripts/security-report.mjs --docs docs
-          ${{ inputs.dry-run && '--dry-run' || '' }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          FLAG=""
+          [ "$DRY_RUN" = "true" ] && FLAG="--dry-run"
+          node scripts/security-report.mjs --docs docs $FLAG
