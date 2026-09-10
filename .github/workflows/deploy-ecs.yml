@@ -57,6 +57,15 @@ on:
         description: 'GitHub Environment to bind the deploy job to (dev | staging | prod). Gates on its protection rules; `vars`/`secrets` resolve to that environment.'
         type: string
         default: ""
+      sentry-project:
+        description: 'Sentry project slug. Set to create a Sentry release on each deploy + stamp SENTRY_RELEASE on the task def. Empty = skip all Sentry steps.'
+        type: string
+        default: ""
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        required: false
+      SENTRY_ORG:
+        required: false
 
 permissions:
   id-token: write
@@ -68,6 +77,9 @@ jobs:
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # full history so the Sentry release can associate commits (set_commits: auto)
+          fetch-depth: ${{ inputs.sentry-project != '' && 0 || 1 }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -90,17 +102,39 @@ jobs:
           docker push "$IMAGE"
           docker push "$REGISTRY/$REPO:latest"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: sentry release name
+        id: sentry
+        env:
+          PROJECT: ${{ inputs.sentry-project }}
+          TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          TAG: ${{ steps.build.outputs.tag }}
+        run: |
+          if [ -n "$PROJECT" ] && [ -n "$TOKEN" ]; then
+            echo "release=$PROJECT@$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: register new task definition
         id: taskdef
         env:
           IMAGE: ${{ steps.build.outputs.image }}
+          RELEASE: ${{ steps.sentry.outputs.release }}
         run: |
           set -euo pipefail
           aws ecs describe-task-definition --task-definition "${{ inputs.task-family }}" \
             --query 'taskDefinition' --output json > current.json
-          jq --arg img "$IMAGE" --arg name "${{ inputs.container-name }}" '
-            .containerDefinitions = (.containerDefinitions | map(if .name == $name then .image = $img else . end))
+          jq --arg img "$IMAGE" --arg name "${{ inputs.container-name }}" --arg rel "$RELEASE" '
+            .containerDefinitions = (.containerDefinitions | map(
+              if .name == $name then
+                .image = $img
+                | if $rel != "" then
+                    .environment = (((.environment // []) | map(select(.name != "SENTRY_RELEASE")))
+                                    + [{"name": "SENTRY_RELEASE", "value": $rel}])
+                  else . end
+              else . end))
             | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
           ' current.json > new.json
           NEW_ARN=$(aws ecs register-task-definition --cli-input-json file://new.json \
@@ -139,3 +173,18 @@ jobs:
         if: ${{ inputs.wait-for-stable }}
         run: |
           aws ecs wait services-stable --cluster "${{ inputs.cluster }}" --services "${{ inputs.service }}"
+
+      # Create + finalize the Sentry release for this deploy, and associate the
+      # commits since the last one. Skipped unless sentry-project + the token
+      # are both set. Runtime release name matches (SENTRY_RELEASE on the task).
+      - name: sentry release
+        if: ${{ steps.sentry.outputs.release != '' }}
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ inputs.sentry-project }}
+        with:
+          version: ${{ steps.sentry.outputs.release }}
+          environment: ${{ inputs.environment }}
+          set_commits: auto
