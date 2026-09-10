@@ -33,15 +33,22 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: sudo apt-get update && sudo apt-get install -y cppcheck
-      - name: cppcheck (gate on error-severity)
+      - name: cppcheck
         env:
           PATHS: ${{ inputs.paths }}
+        # `--error-exitcode` fires on ANY issue in cppcheck 2.13, so gate by
+        # parsing the XML for severity="error" (real bugs / syntax errors);
+        # warnings/style go to the log only.
         run: |
           read -ra P <<< "$PATHS"
           cppcheck --enable=warning,style,performance,portability \
             --inline-suppr --suppress=missingIncludeSystem -i .pio \
-            --std=c++17 --language=c++ --template=gcc -q \
-            --error-exitcode=1 "${P[@]}"
+            --std=c++17 --language=c++ --template=gcc \
+            --xml --xml-version=2 --output-file=cppcheck.xml "${P[@]}"
+          grep -oE '<error [^>]*>' cppcheck.xml | sed 's/<error //;s/>//' || true
+          if grep -q 'severity="error"' cppcheck.xml; then
+            echo "::error::cppcheck reported error-severity issues"; exit 1
+          fi
 
   flawfinder:
     runs-on: ubuntu-latest
