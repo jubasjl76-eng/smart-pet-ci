@@ -51,18 +51,18 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
   sast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: semgrep (registry packs — report only)
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
@@ -71,7 +71,7 @@ jobs:
               --sarif --output semgrep.sarif --metrics=off \
               ${{ inputs.strict && '--error' || '' }} \
               "${{ inputs.working-directory }}"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         if: ${{ !cancelled() }}
         with:
           sarif_file: semgrep.sarif
@@ -90,7 +90,7 @@ jobs:
   deps:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: trivy fs (vulns + secrets)
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$TRIVY_IMAGE" \
@@ -98,12 +98,12 @@ jobs:
               --format sarif --output trivy-fs.sarif \
               --exit-code ${{ inputs.strict && '1' || '0' }} \
               "${{ inputs.working-directory }}"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         if: ${{ !cancelled() }}
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         if: ${{ inputs.node }}
         with:
           node-version: "22"
@@ -119,7 +119,7 @@ jobs:
     if: ${{ inputs.iac }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: trivy config
         run: |
           docker run --rm -v "$PWD:/src" -w /src "$TRIVY_IMAGE" \
@@ -127,7 +127,7 @@ jobs:
               --format sarif --output trivy-config.sarif \
               --exit-code ${{ inputs.strict && '1' || '0' }} \
               "${{ inputs.working-directory }}"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         if: ${{ !cancelled() }}
         with:
           sarif_file: trivy-config.sarif

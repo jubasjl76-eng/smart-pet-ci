@@ -35,12 +35,12 @@ jobs:
       matrix:
         language: ${{ fromJSON(inputs.languages) }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: ${{ inputs.queries }}
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         with:
           category: "/language:${{ matrix.language }}"
