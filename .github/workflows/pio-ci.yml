@@ -37,6 +37,24 @@ on:
           "" to skip. Dormant unless the caller also has WOKWI_CLI_TOKEN set.
         type: string
         default: ""
+      size-check:
+        description: >-
+          Report flash/RAM per env to the job summary (vs `firmware-size.json`)
+          and gate on `-fstack-usage` single-frame budget.
+        type: boolean
+        default: false
+      size-baseline:
+        description: 'Committed baseline file: { "<env>": { "flash": N, "ram": N } }.'
+        type: string
+        default: "firmware-size.json"
+      stack-budget-bytes:
+        description: 'Fail if any src/ function has a single stack frame over this.'
+        type: string
+        default: "2048"
+      size-strict:
+        description: 'Also fail on a flash/RAM increase over the baseline (default: warn only).'
+        type: boolean
+        default: false
     secrets:
       WOKWI_CLI_TOKEN:
         required: false
@@ -98,12 +116,69 @@ jobs:
       - name: pio run
         env:
           EXAMPLE_DIR: ${{ inputs.example-dir }}
+          ENV_NAME: ${{ matrix.env }}
+          PROJECT_DIR: ${{ inputs.project-dir }}
+          SIZE_CHECK: ${{ inputs.size-check }}
         run: |
           if [ -n "$EXAMPLE_DIR" ]; then
-            export PLATFORMIO_SRC_DIR="$EXAMPLE_DIR/${{ matrix.env }}"
+            export PLATFORMIO_SRC_DIR="$EXAMPLE_DIR/$ENV_NAME"
             echo "PLATFORMIO_SRC_DIR=$PLATFORMIO_SRC_DIR"
           fi
-          pio run -d "${{ inputs.project-dir }}" -e ${{ matrix.env }}
+          [ "$SIZE_CHECK" = "true" ] && export PLATFORMIO_BUILD_SRC_FLAGS="-fstack-usage"
+          pio run -d "$PROJECT_DIR" -e "$ENV_NAME" 2>&1 | tee /tmp/pio.log
+
+      - name: size report + stack budget
+        if: ${{ inputs.size-check }}
+        env:
+          ENV_NAME: ${{ matrix.env }}
+          PROJECT_DIR: ${{ inputs.project-dir }}
+          BASELINE: ${{ inputs.size-baseline }}
+          STACK_BUDGET: ${{ inputs.stack-budget-bytes }}
+          SIZE_STRICT: ${{ inputs.size-strict }}
+        run: |
+          set -eu
+          # PlatformIO prints "... used <N> bytes ..." for RAM then Flash.
+          mapfile -t used < <(grep -oE 'used [0-9]+ bytes' /tmp/pio.log | grep -oE '[0-9]+')
+          ram="${used[0]:-}"
+          flash="${used[1]:-}"
+          if [ -z "$flash" ] || [ -z "$ram" ]; then
+            echo "::warning::could not parse size from the build log — skipping size report"
+            exit 0
+          fi
+          bfile="$PROJECT_DIR/$BASELINE"
+          bflash=$(jq -r --arg e "$ENV_NAME" '.[$e].flash // ""' "$bfile" 2>/dev/null || echo "")
+          bram=$(jq -r --arg e "$ENV_NAME" '.[$e].ram // ""' "$bfile" 2>/dev/null || echo "")
+          dflash=$([ -n "$bflash" ] && echo $((flash - bflash)) || echo "—")
+          dram=$([ -n "$bram" ] && echo $((ram - bram)) || echo "—")
+          {
+            echo "### 📦 \`$ENV_NAME\` size"
+            echo ""
+            echo "| | bytes | baseline | Δ |"
+            echo "|---|---:|---:|---:|"
+            echo "| Flash | $flash | ${bflash:-—} | $dflash |"
+            echo "| RAM | $ram | ${bram:-—} | $dram |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$bflash" ]; then
+            echo "_No baseline for \`$ENV_NAME\` — seed \`$BASELINE\` with:_ \`{\"$ENV_NAME\":{\"flash\":$flash,\"ram\":$ram}}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          grew=0
+          [ -n "$bflash" ] && [ "$dflash" != "—" ] && [ "$dflash" -gt 2048 ] && grew=1
+          [ -n "$bram" ] && [ "$dram" != "—" ] && [ "$dram" -gt 512 ] && grew=1
+          if [ "$grew" = 1 ]; then
+            echo "⚠️  size grew past the soft limit (flash +2048 / ram +512)" >> "$GITHUB_STEP_SUMMARY"
+            [ "$SIZE_STRICT" = "true" ] && { echo "::error::firmware size regression on $ENV_NAME"; exit 1; }
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### Stack frames over ${STACK_BUDGET}B (src/ only)" >> "$GITHUB_STEP_SUMMARY"
+          over=$(find ".pio/build/$ENV_NAME" -name '*.su' -not -path '*/libdeps/*' -exec cat {} + 2>/dev/null \
+                 | awk -F'\t' -v b="$STACK_BUDGET" 'NF>=2 && ($2+0)>b {print "- `"$1"` — "$2" B"}' | sort -t' ' -k4 -rn || true)
+          if [ -n "$over" ]; then
+            echo "$over" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::stack frame over budget on $ENV_NAME"
+            exit 1
+          fi
+          echo "_none_ ✅" >> "$GITHUB_STEP_SUMMARY"
 
   # Boots the built image on a simulated ESP32. No-op until the caller sets the
   # (free, OSS) WOKWI_CLI_TOKEN secret — see smart-pet-docs OPERATOR-ACTIONS G4.
