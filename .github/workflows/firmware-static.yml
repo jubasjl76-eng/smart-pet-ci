@@ -1,0 +1,76 @@
+name: firmware-static
+
+# Reusable static analysis for the C/C++ firmware repos (Phase 18, Part C · C5).
+# cppcheck and Flawfinder need no toolchain and gate on real defects; CodeQL C++
+# (codeql.yml) covers the semantic pass. clang-tidy needs a PlatformIO compile
+# DB to be useful on ESP32 code — tracked separately.
+#
+# Caller: <repo>/.github/workflows/firmware-static.yml
+#   permissions: { contents: read, security-events: write }
+#   uses: jubasjl76-eng/smart-pet-ci/.github/workflows/firmware-static.yml@main
+#   with:
+#     paths: "firmware"        # space-separated dirs of .c/.cpp/.h
+
+on:
+  workflow_call:
+    inputs:
+      paths:
+        description: "Space-separated C/C++ source dirs to scan."
+        type: string
+        default: "src"
+      flawfinder-gate-level:
+        description: "Fail on Flawfinder hits at or above this risk level (1-5)."
+        type: string
+        default: "4"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  cppcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: cppcheck (gate on error-severity)
+        env:
+          PATHS: ${{ inputs.paths }}
+        run: |
+          read -ra P <<< "$PATHS"
+          cppcheck --enable=warning,style,performance,portability \
+            --inline-suppr --suppress=missingIncludeSystem -i .pio \
+            --std=c++17 --language=c++ --template=gcc -q \
+            --error-exitcode=1 "${P[@]}"
+
+  flawfinder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - run: pip install flawfinder
+      - name: collect sources
+        id: src
+        env:
+          PATHS: ${{ inputs.paths }}
+        run: |
+          read -ra P <<< "$PATHS"
+          find "${P[@]}" \( -name '*.c' -o -name '*.cpp' -o -name '*.cc' \
+            -o -name '*.h' -o -name '*.hpp' \) \
+            -not -path '*/.pio/*' -not -path '*/.git/*' > files.txt
+          echo "count=$(wc -l < files.txt)" >> "$GITHUB_OUTPUT"
+      - name: flawfinder (SARIF -> Security tab)
+        if: ${{ steps.src.outputs.count != '0' }}
+        run: xargs -a files.txt flawfinder --sarif --minlevel 1 > flawfinder.sarif || true
+      - uses: github/codeql-action/upload-sarif@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        if: ${{ steps.src.outputs.count != '0' && !cancelled() }}
+        with:
+          sarif_file: flawfinder.sarif
+          category: flawfinder
+      - name: flawfinder (gate)
+        if: ${{ steps.src.outputs.count != '0' }}
+        env:
+          LEVEL: ${{ inputs.flawfinder-gate-level }}
+        run: xargs -a files.txt flawfinder --error-level "$LEVEL" --minlevel "$LEVEL"
