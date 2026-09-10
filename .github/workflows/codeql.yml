@@ -1,10 +1,26 @@
-name: CodeQL
+name: codeql
+
+# Reusable CodeQL analysis (Phase 18, Part C · C2 — SAST semantic).
+# Free on public repos. Buildless (`build-mode: none`) for every language,
+# including c-cpp — no PlatformIO / toolchain needed for a source scan.
+#
+# Caller: <repo>/.github/workflows/codeql.yml
+#   permissions: { contents: read, security-events: write, actions: read }
+#   uses: jubasjl76-eng/smart-pet-ci/.github/workflows/codeql.yml@main
+#   with:
+#     languages: '["javascript-typescript"]'   # or ["c-cpp"], ["actions"], a mix
+
 on:
-  push:
-    branches: [main, development]
-  pull_request:
-  schedule:
-    - cron: '16 7 * * 1' # Mondays
+  workflow_call:
+    inputs:
+      languages:
+        description: 'JSON array of CodeQL languages.'
+        type: string
+        required: true
+      queries:
+        description: 'CodeQL query suite (e.g. security-extended). Empty = default.'
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -12,7 +28,19 @@ permissions:
   actions: read
 
 jobs:
-  codeql:
-    uses: jubasjl76-eng/smart-pet-ci/.github/workflows/codeql.yml@main
-    with:
-      languages: '["actions"]'
+  analyze:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(inputs.languages) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: ${{ inputs.queries }}
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
