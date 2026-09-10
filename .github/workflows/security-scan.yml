@@ -7,8 +7,12 @@ name: security-scan
 # repo's baseline is triaged.
 #
 # Caller: <repo>/.github/workflows/security.yml
+#   permissions: { contents: read, security-events: write }
 #   uses: jubasjl76-eng/smart-pet-ci/.github/workflows/security-scan.yml@main
 #   with: { node: true, iac: false }
+#
+# Scanners run from pinned Docker images (semgrep, trivy) so there's no GitHub
+# Action version drift to chase.
 
 on:
   workflow_call:
@@ -36,6 +40,10 @@ permissions:
   contents: read
   security-events: write
 
+env:
+  SEMGREP_IMAGE: semgrep/semgrep:1.97.0
+  TRIVY_IMAGE: aquasec/trivy:0.74.0
+
 jobs:
   secrets:
     runs-on: ubuntu-latest
@@ -52,17 +60,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - run: pip install semgrep==1.97.0
       - name: semgrep
         run: |
-          semgrep scan \
-            --config p/default --config p/secrets --config p/owasp-top-ten \
-            --sarif --output semgrep.sarif --metrics=off \
-            ${{ inputs.strict && '--error' || '' }} \
-            "${{ inputs.working-directory }}"
+          docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
+            semgrep scan \
+              --config p/default --config p/secrets --config p/owasp-top-ten \
+              --sarif --output semgrep.sarif --metrics=off \
+              ${{ inputs.strict && '--error' || '' }} \
+              "${{ inputs.working-directory }}"
       - uses: github/codeql-action/upload-sarif@v3
         if: ${{ !cancelled() }}
         with:
@@ -74,21 +79,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: trivy fs (vulns + secrets)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: ${{ inputs.working-directory }}
-          scanners: vuln,secret
-          format: sarif
-          output: trivy-fs.sarif
-          exit-code: ${{ inputs.strict && '1' || '0' }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "$TRIVY_IMAGE" \
+            fs --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed \
+              --format sarif --output trivy-fs.sarif \
+              --exit-code ${{ inputs.strict && '1' || '0' }} \
+              "${{ inputs.working-directory }}"
       - uses: github/codeql-action/upload-sarif@v3
         if: ${{ !cancelled() }}
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
+      - uses: actions/setup-node@v5
+        if: ${{ inputs.node }}
+        with:
+          node-version: "22"
       - name: npm audit
         if: ${{ inputs.node }}
         working-directory: ${{ inputs.working-directory }}
@@ -101,14 +106,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: trivy config
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: config
-          scan-ref: ${{ inputs.working-directory }}
-          format: sarif
-          output: trivy-config.sarif
-          exit-code: ${{ inputs.strict && '1' || '0' }}
-          severity: HIGH,CRITICAL
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "$TRIVY_IMAGE" \
+            config --severity HIGH,CRITICAL \
+              --format sarif --output trivy-config.sarif \
+              --exit-code ${{ inputs.strict && '1' || '0' }} \
+              "${{ inputs.working-directory }}"
       - uses: github/codeql-action/upload-sarif@v3
         if: ${{ !cancelled() }}
         with:
