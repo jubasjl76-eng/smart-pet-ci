@@ -1,10 +1,9 @@
 name: security-scan
 
 # Reusable per-PR + weekly security battery (Phase 18, Part C · C2).
-# All repos are public, so SARIF -> the repo Security tab is free. Hard gates:
-# secrets (any hit) and `npm audit` (>= audit-level). Semgrep + Trivy upload to
-# the Security tab but don't fail the build yet — flip `strict: true` once each
-# repo's baseline is triaged.
+# All repos are public, so SARIF -> the repo Security tab is free. gitleaks is
+# always a hard gate. Semgrep, Trivy and `npm audit` report only until
+# `strict: true` — flip that per repo once its baseline is triaged.
 #
 # Caller: <repo>/.github/workflows/security.yml
 #   permissions: { contents: read, security-events: write }
@@ -96,8 +95,10 @@ jobs:
           node-version: "22"
       - name: npm audit
         if: ${{ inputs.node }}
+        # Runtime deps only. Non-blocking until `strict` — same baseline switch
+        # as Semgrep / Trivy; the advisories still print to the job log.
+        continue-on-error: ${{ !inputs.strict }}
         working-directory: ${{ inputs.working-directory }}
-        # Runtime deps only — dev-only advisories are tracked, not release-blocking.
         run: npm audit --omit=dev --audit-level=${{ inputs.audit-level }}
 
   iac:
