@@ -1,0 +1,52 @@
+name: security-report
+
+# Weekly roll-up of every repo's security posture into
+# smart-pet-docs/security/<ISO-year>-W<week>.md (Phase 18, Part C · C3).
+# The per-repo `security.yml` + `codeql.yml` do the scanning on their own Monday
+# crons; this runs after and aggregates the results.
+#
+# Needs an org/repo secret SECURITY_REPORT_TOKEN — a PAT that can read security
+# alerts on every Smart Pet repo and push to smart-pet-docs (see
+# smart-pet-docs/OPERATOR-ACTIONS.md F). Until it is set the job no-ops.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Mondays 08:00 UTC — after the 06:xx per-repo scans
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Render the report but do not commit it."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: token gate
+        id: gate
+        env:
+          TOK: ${{ secrets.SECURITY_REPORT_TOKEN }}
+        run: |
+          if [ -n "$TOK" ]; then
+            echo "on=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::SECURITY_REPORT_TOKEN not set — see smart-pet-docs/OPERATOR-ACTIONS.md F. Skipping."
+          fi
+      - if: steps.gate.outputs.on
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - if: steps.gate.outputs.on
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: jubasjl76-eng/smart-pet-docs
+          path: docs
+          token: ${{ secrets.SECURITY_REPORT_TOKEN }}
+      - if: steps.gate.outputs.on
+        env:
+          GH_TOKEN: ${{ secrets.SECURITY_REPORT_TOKEN }}
+        run: >-
+          node scripts/security-report.mjs --docs docs
+          ${{ inputs.dry-run && '--dry-run' || '' }}
