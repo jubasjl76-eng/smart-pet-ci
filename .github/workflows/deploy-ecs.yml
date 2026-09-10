@@ -61,6 +61,10 @@ on:
         description: 'Sentry project slug. Set to create a Sentry release on each deploy + stamp SENTRY_RELEASE on the task def. Empty = skip all Sentry steps.'
         type: string
         default: ""
+      attest:
+        description: 'Generate a CycloneDX SBOM + SLSA build provenance for the pushed image (Phase 18). Caller must also grant `attestations: write`.'
+        type: boolean
+        default: true
     secrets:
       SENTRY_AUTH_TOKEN:
         required: false
@@ -70,6 +74,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  attestations: write # SLSA provenance + SBOM attestations (Phase 18)
 
 jobs:
   deploy:
@@ -101,8 +106,40 @@ jobs:
           docker build -f "${{ inputs.dockerfile }}" -t "$IMAGE" -t "$REGISTRY/$REPO:latest" "${{ inputs.build-context }}"
           docker push "$IMAGE"
           docker push "$REGISTRY/$REPO:latest"
-          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE" | cut -d@ -f2)
+          {
+            echo "image=$IMAGE"
+            echo "tag=$TAG"
+            echo "name=$REGISTRY/$REPO"
+            echo "digest=$DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      # Supply-chain: a CycloneDX SBOM + SLSA build provenance bound to the image
+      # digest, also pushed to ECR as OCI referrers (`gh attestation verify` /
+      # `cosign verify-attestation`). Phase 18, Part C.
+      - name: SBOM (CycloneDX)
+        if: ${{ inputs.attest }}
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.build.outputs.image }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          artifact-name: sbom-${{ inputs.service }}-${{ steps.build.outputs.tag }}.cdx.json
+      - name: attest build provenance
+        if: ${{ inputs.attest }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.build.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: attest SBOM
+        if: ${{ inputs.attest }}
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ steps.build.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true
 
       - name: sentry release name
         id: sentry
