@@ -120,6 +120,7 @@ jobs:
           PROJECT_DIR: ${{ inputs.project-dir }}
           SIZE_CHECK: ${{ inputs.size-check }}
         run: |
+          set -o pipefail # a `pio run` failure must fail the job, not just tee's exit code
           if [ -n "$EXAMPLE_DIR" ]; then
             export PLATFORMIO_SRC_DIR="$EXAMPLE_DIR/$ENV_NAME"
             echo "PLATFORMIO_SRC_DIR=$PLATFORMIO_SRC_DIR"
@@ -171,7 +172,7 @@ jobs:
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### Stack frames over ${STACK_BUDGET}B (src/ only)" >> "$GITHUB_STEP_SUMMARY"
-          over=$(find ".pio/build/$ENV_NAME" -name '*.su' -not -path '*/libdeps/*' -exec cat {} + 2>/dev/null \
+          over=$(find "$PROJECT_DIR/.pio/build/$ENV_NAME" -name '*.su' -not -path '*/libdeps/*' -exec cat {} + 2>/dev/null \
                  | awk -F'\t' -v b="$STACK_BUDGET" 'NF>=2 && ($2+0)>b {print "- `"$1"` — "$2" B"}' | sort -t' ' -k4 -rn || true)
           if [ -n "$over" ]; then
             echo "$over" >> "$GITHUB_STEP_SUMMARY"
