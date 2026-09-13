@@ -1,0 +1,63 @@
+name: k6-load-test
+
+# Reusable k6 HTTP load test (hardening Phase 21, A12 #24). Manual/scheduled
+# only — this targets a real deployed environment (staging), not something to
+# run on every push. The caller repo owns the actual script (endpoints,
+# auth flow, thresholds); this just provides the runner + summary artifact.
+# k6's own `thresholds` config fails the run (non-zero exit) on a breach —
+# that's the pass/fail gate, no extra logic needed here.
+#
+# Caller: <repo>/.github/workflows/load-test.yml
+#   on: { workflow_dispatch: { inputs: { target_url: ... } } }
+#   uses: jubasjl76-eng/smart-pet-ci/.github/workflows/k6-load-test.yml@main
+#   with: { script: k6/api-load-test.js, target-url: ${{ inputs.target_url }} }
+#   secrets: { LOAD_TEST_EMAIL: ..., LOAD_TEST_PASSWORD: ... }
+
+on:
+  workflow_call:
+    inputs:
+      script:
+        description: 'Path (in the caller repo) to the k6 test script.'
+        type: string
+        required: true
+      target-url:
+        description: 'Base URL under test, e.g. https://api-staging.example.com.'
+        type: string
+        required: true
+      working-directory:
+        type: string
+        default: "."
+      k6-version:
+        type: string
+        default: "0.54.0"
+    secrets:
+      LOAD_TEST_EMAIL:
+        required: false
+      LOAD_TEST_PASSWORD:
+        required: false
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
+        with:
+          k6-version: ${{ inputs.k6-version }}
+      - name: Run k6
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          TARGET_URL: ${{ inputs.target-url }}
+          LOAD_TEST_EMAIL: ${{ secrets.LOAD_TEST_EMAIL }}
+          LOAD_TEST_PASSWORD: ${{ secrets.LOAD_TEST_PASSWORD }}
+          K6_SCRIPT: ${{ inputs.script }}
+        run: k6 run --summary-export=k6-summary.json "$K6_SCRIPT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() }}
+        with:
+          name: k6-summary
+          path: ${{ inputs.working-directory }}/k6-summary.json
+          retention-days: 30
